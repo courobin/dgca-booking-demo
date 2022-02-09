@@ -1,0 +1,91 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: booking-demo
+  namespace: dgca-test
+  labels:
+    app: booking-demo
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+  selector:
+    app: booking-demo
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: booking-demo
+  namespace: dgca-test
+  labels:
+    app: booking-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: booking-demo
+  template:
+    metadata:
+      labels:
+        app: booking-demo
+    spec:
+      volumes:
+        - name: destination
+          secret:
+            secretName: destination-service-binding-booking-demo
+        - name: xsuaa
+          secret:
+            secretName: uaa-service-binding-booking-demo
+      imagePullSecrets:
+        - name: regcred
+      containers:
+        - name: booking-demo-service
+          image: docker.pkg.github.com/courobin/dgca-booking-demo/dgca-booking-demo:latest
+          imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: dgca-booking-demo
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: https
+              containerPort: 443
+          volumeMounts:
+            - name: destination
+              mountPath: "/etc/secrets/sapcp/destination/destination-service-instance-booking-demo"
+              readOnly: true
+            - name: xsuaa
+              mountPath: "/etc/secrets/sapcp/xsuaa/uaa-service-instance-booking-demo"
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+
+---
+apiVersion: servicecatalog.k8s.io/v1beta1
+kind: ServiceInstance
+metadata:
+  name: uaa-service-instance-booking-demo
+  namespace: dgca-test
+spec:
+  clusterServiceClassExternalName: xsuaa
+  clusterServicePlanExternalName: application
+  parameters:
+    xsappname: xsuaa-kyma-booking-demo
+    tenant-mode: dedicated
+    oauth2-configuration:
+      redirect-uris:
+        - https://*/**
+
+---
+apiVersion: servicecatalog.k8s.io/v1beta1
+kind: ServiceBinding
+metadata:
+  name: uaa-service-binding-booking-demo
+  namespace: dgca-test
+spec:
+  instanceRef:
+    name: uaa-service-instance-booking-demo
